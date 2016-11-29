@@ -145,7 +145,7 @@ class Cube(object):
                 self.stickers[i] = np.rot90(self.stickers[i], 3)
             if l == self.N - 1:
                 self.stickers[i2] = np.rot90(self.stickers[i2], 1)
-        print "moved", f, l, len(ds)
+        print("moved", f, l, len(ds))
         return None
 
     def _rotate(self, args):
