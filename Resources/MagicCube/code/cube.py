@@ -98,7 +98,7 @@ class Cube(object):
             self.move(f, l, d)
         return None
 
-    def move(self, f, l, d):
+    def move(self, f, l, d, verbose = False):
         """
         Make a layer move of layer `l` parallel to face `f` through
         `d` 90-degree turns in the clockwise direction.  Layer `0` is
@@ -145,7 +145,10 @@ class Cube(object):
                 self.stickers[i] = np.rot90(self.stickers[i], 3)
             if l == self.N - 1:
                 self.stickers[i2] = np.rot90(self.stickers[i2], 1)
-        print("moved", f, l, len(ds))
+        
+        if verbose:
+            print("moved", f, l, len(ds))
+            
         return None
 
     def _rotate(self, args):
@@ -256,8 +259,10 @@ class Cube(object):
                 for k in range(self.N):
                     ax.add_artist(Rectangle((x0 + j * cs, y0 + k * cs), cs, cs, ec=self.plasticcolor,
                                             fc=self.stickercolors[self.stickers[i, j, k]]))
-            ax.text(x0 + 0.5, y0 + 0.5, f, color=self.labelcolor,
+            ax.text(x0 + 0.5, y0 + 0.5, f+"-"+str(i), color=self.labelcolor,
                     ha="center", va="center", rotation=20, fontsize=self.fontsize)
+            
+            
         return None
 
     def render(self, flat=True, views=True):
