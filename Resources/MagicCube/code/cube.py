@@ -171,7 +171,8 @@ class Cube(object):
         for t in range(number):
             f = self.dictface[np.random.randint(6)]
             l = np.random.randint(self.N)
-            d = 1 + np.random.randint(3)
+            #d = 1 + np.random.randint(3)
+            d = 2*np.random.randint(2)-1
             self.move(f, l, d)
         return None
 
