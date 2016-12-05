@@ -1,1 +1,4 @@
 https://www.nervanasys.com/demystifying-deep-reinforcement-learning/
+
+Installation de carte graphique pour Tensorflow:
+https://devtalk.nvidia.com/default/topic/936429/-solved-tensorflow-with-gpu-in-anaconda-env-ubuntu-16-04-cuda-7-5-cudnn-/
