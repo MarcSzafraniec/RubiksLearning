@@ -35,7 +35,7 @@ beta = 3./4
 def all_actions(N): #rotate by +90° / by -90° 
     actions = []
     c = Cube(N)
-    for face_name in list(Cube.facedict.keys())[:3]: #the list is in the end ['U','D','F']
+    for face_name in ["F","U","R"]: #the list is in the end ['U','D','F']
         for layer in range(c.N):
             for times in [1,-1]:
                 actions.append([face_name,layer,times])
@@ -138,7 +138,7 @@ with tf.device("/gpu:0"):
     
     loss_function = tf.reduce_mean(tf.square(tf.sub(Q_,Qs)))
 
-    train_step = tf.train.AdamOptimizer(10).minimize(loss_function)
+    train_step = tf.train.AdamOptimizer(1).minimize(loss_function)
     
     init_op = tf.group(tf.global_variables_initializer(), tf.local_variables_initializer())
     sess.run(init_op)
@@ -165,7 +165,8 @@ def DQN(c_init,Tmax,nb_episodes, n_moves):
         episode += 1
         
         s = copy.deepcopy(c_init)
-        s.randomize(n_moves) #we randomize n_moves times in order to have a "well mixed" cube
+        #s.randomize(n_moves) #we randomize n_moves times in order to have a "well mixed" cube
+        s.move("F",1,-1)
         cum_reward = []
         
         tries += 1
@@ -184,6 +185,7 @@ def DQN(c_init,Tmax,nb_episodes, n_moves):
             
             #Get new state and reward from environment
             f,l,d = actions[a]
+            print(actions[a])
             s.move(f,l,d)            
             r = reward_cube(s)
             cum_reward.append(r)
