@@ -152,17 +152,21 @@ def DQN(c_init,Tmax,nb_episodes, n_moves):
     
     done = 0
     lActions = np.zeros(18)
-    print("ep.","\t","Loss Function","\t","Min Q","\t\t", "Reward", "", "NB.","\t", "Prcent.")
+    print("moves","\t","ep.","\t","Loss Function","\t","Min Q","\t\t", "Reward", "", "NB.","\t", "Prcent.")
+    
+    mineps = .1
     def eps(episode):
         return min(1,max(.1,100/(1+episode)))
     
+    lenBatch = 10
+    
     episode = 1
     
-    tries = 0
+    tries = 1
     
     dones = np.empty([0])
     
-    for k in range(nb_episodes): 
+    while np.sum(dones[-1000:])/min(1000,tries) < 1 - mineps and episode < nb_episodes:  
         
         episode += 1
         
@@ -194,7 +198,7 @@ def DQN(c_init,Tmax,nb_episodes, n_moves):
             s.move(f,l,d)            
             r = reward_cube(s)
             cum_reward.append(r)
-            D.append([S, a, r, np.reshape(s.stickers,(1, 54))])
+            D.append(copy.copy([S, a, r, np.reshape(s.stickers,(1, 54))]))
             
             #print(S)
             #print(np.reshape(s.stickers,(1, 54)))
@@ -206,6 +210,7 @@ def DQN(c_init,Tmax,nb_episodes, n_moves):
             targetQ = Qout
             targetQ[0,a] = r + gamma*maxQprime
             #Train our network using target and predicted Q values
+               
             sess.run(train_step,feed_dict={Q_: targetQ, x: S})
             
             #print(targetQ)
@@ -219,8 +224,36 @@ def DQN(c_init,Tmax,nb_episodes, n_moves):
             
         dones = np.append(dones,done)
             
+        
+#==============================================================================
+#         if episode%lenBatch == 0:
+#             Dshuf = D
+#             random.shuffle(Dshuf)
+#             batch = np.array(Dshuf[:lenBatch*Tmax])
+# 
+#             tts = np.empty([0,nb_actions])
+# 
+#             for i in range(len(batch)):
+# 
+#                 faces_done = np.sum([np.sum([batch[i][-1][0][f*9+j] != batch[i][-1][0][f*9] for j in range(9)]) == 0 for f in range(6)])
+#                 
+#                 Qprime = sess.run(Q2,feed_dict={x:batch[i][-1]})
+#                 maxQprime = np.max(Qprime)
+#                 
+#                 tt = sess.run(Q2,feed_dict={x:batch[i][0]})
+#                 if faces_done == 6:
+#                     tt[0,batch[i][1]] = batch[i][-2]
+#                 else:
+#                     tt[0,batch[i][1]] = batch[i][-2] + gamma*maxQprime
+# 
+#                 tts = np.concatenate((tts,tt),0)
+# 
+#             sess.run(train_step,feed_dict={Q_: tts, x: batch[:,0][0]})
+#==============================================================================
+            
         if episode%10 == 1:
-            print(episode,"\t",sess.run(loss_function,feed_dict={Q_: targetQ, x: S}),"\t",min(sess.run(Q2,feed_dict={x:S})[0]),"\t", round(np.mean(cum_reward[-1]),2), "\t", np.sum(dones[-1000:]),"\t", round(100*np.sum(dones[-1000:])/min(1000,tries),2))
+#             sess.run(loss_function,feed_dict={Q_: targetQ, x: S}),"\t",
+            print(n_moves,"\t",episode,"\t",min(sess.run(Q2,feed_dict={x:S})[0]),"\t", round(np.mean(cum_reward[-1]),2), "\t", np.sum(dones[-1000:]),"\t", round(100*np.sum(dones[-1000:])/min(1000,tries),2))
     #             print(lActions)
             print(np.var(sess.run(Q2,feed_dict={x:S})))
         
@@ -231,10 +264,20 @@ def DQN(c_init,Tmax,nb_episodes, n_moves):
 
 
 
+            
+def longTrain(c_init,n_moves_max):
+
+    for i in range(1,1+n_moves_max):
+        print("==============================================================================")
+        print("\t",i,"Moves","\t")
+        print("==============================================================================")
+        DQN(c_init=c_init,Tmax=i,nb_episodes=int(sys.argv[2]),n_moves = i)
+
 # In[ ]:
 
 with tf.device("/gpu:0"):
-    DQN(c_init=Cube(3),Tmax=25,nb_episodes=int(sys.argv[2]),n_moves = 3)
+    longTrain(Cube(3),10)
+#    DQN(c_init=Cube(3),Tmax=int(sys.argv[4]),nb_episodes=int(sys.argv[2]),n_moves = int(sys.argv[3]))
 
 
 # In[ ]:
