@@ -101,19 +101,44 @@ def test_function_state_cube():
 actions = all_actions(N) #rotate by +90° / by -90° 
 nb_actions = len(actions)
 
+class network():
+    
+    def __init__(self,W1,W2):
+        
+        self.W1 = W1
+        self.W2 = W2
+        
+        self.Q1 = tf.matmul(x/6,self.W1)# + b1
+        self.Qs1 = tf.nn.tanh(self.Q1)
+        self.Q2 = tf.matmul(self.Qs1,self.W2)#tf.nn.relu(tf.matmul(Qs1,W2))# + b2)
+        
+        self.sess = tf.Session(config=tf.ConfigProto(log_device_placement=True))
+         
+        self.network_params = tf.trainable_variables()
+        self.tau = 1.
+    
+    
+    
+    def update_target_network(self, trainNet):
+        
+        self.update_target_network_params = \
+            [self.network_params[i].assign(tf.mul(trainNet.network_params[i], self.tau) + \
+                tf.mul(self.network_params[i], 1. - self.tau))
+                for i in range(len(self.network_params))]
+        
+        self.sess.run(self.update_target_network_params)
 
 # In[29]:
 
 c_init=Cube(3)
 
+resume = sys.argv[1] == "True"
+
 #==============================================================================
 #                           DEFINE NEURAL NETWORK
 #==============================================================================
 
-resume = sys.argv[1] == "True"
- 
- # sess = tf.InteractiveSession()
-sess = tf.Session(config=tf.ConfigProto(log_device_placement=True)) 
+# sess = tf.InteractiveSession() 
 with tf.device("/gpu:0"):
  
     x = tf.placeholder(tf.float32, shape=[None,6*c_init.N**2])
@@ -134,24 +159,24 @@ with tf.device("/gpu:0"):
         W2 = tf.Variable(load[1])
  
  
-    Q1 = tf.matmul(x/6,W1)# + b1
-    Qs1 = tf.nn.tanh(Q1)
-    Q2 = tf.matmul(Qs1,W2)#tf.nn.relu(tf.matmul(Qs1,W2))# + b2)
-    # Qs = tf.matmul(Q2,act)
-    Qs = Q2
+    trainNet = network(W1,W2)
+    
+    targetNet = network(W1,W2)
+    
+#     Qs = targetNet.Q2
 
     
-    loss_function = tf.reduce_mean(tf.square(tf.sub(Q_,Qs)))
+    loss_function = tf.reduce_mean(tf.square(tf.sub(Q_,targetNet.Q2)))
 
     train_step = tf.train.AdamOptimizer(1e-4).minimize(loss_function)
     
     init_op = tf.group(tf.global_variables_initializer(), tf.local_variables_initializer())
-    sess.run(init_op)
- 
-D = []
+    trainNet.sess.run(init_op)
+    targetNet.sess.run(init_op)
+    
 #==============================================================================
 
-#==============================================================================
+D = []
 
 
 # In[37]:
@@ -163,6 +188,8 @@ def DQN(c_init,Tmax,nb_episodes, n_moves):
     lActions = np.zeros(18)
     print("moves","\t","ep.","\t","Loss Function","\t","Min Q","\t\t", "Reward", "", "NB.","\t", "Prcent.","\t","Mn. Prcent.")
     
+    global targetNet
+        
     mineps = .1
     def eps(episode):
         return min(1,max(.1,100/(1+episode)))
@@ -193,7 +220,7 @@ def DQN(c_init,Tmax,nb_episodes, n_moves):
             
             #Choose an action by greedily (with e chance of random action) from the Q-network
             S = copy.copy(np.reshape(s.stickers,(1, 54)))
-            Qout = sess.run(Q2,feed_dict={x:S})
+            Qout = trainNet.sess.run(trainNet.Q2,feed_dict={x:S})
             if(rd.random() > eps(episode)):
                 a = np.argmax(Qout)
             else:
@@ -249,15 +276,15 @@ def DQN(c_init,Tmax,nb_episodes, n_moves):
               batch = np.array(Dshuf)
               
               tts = np.empty([0,nb_actions])
-              
+            
               for i in range(len(batch)):
               
                   faces_done = batch[i][-1]
-                  
-                  Qprime = sess.run(Q2,feed_dict={x:batch[i][-2]})
+                
+                  Qprime = trainNet.sess.run(trainNet.Q2,feed_dict={x:batch[i][-2]})
                   maxQprime = np.max(Qprime)
-                  
-                  tt = sess.run(Q2,feed_dict={x:batch[i][0]})
+                
+                  tt = trainNet.sess.run(trainNet.Q2,feed_dict={x:batch[i][0]})
                   if faces_done == 6:
                       tt[0,batch[i][1]] = batch[i][-3]
                   else:
@@ -265,8 +292,8 @@ def DQN(c_init,Tmax,nb_episodes, n_moves):
               
                   tts = np.concatenate((tts,tt),0)
               
-              sess.run(train_step,feed_dict={Q_: tts, x: batch[:,0][0]})
-              
+              trainNet.sess.run(train_step,feed_dict={Q_: tts, x: batch[:,0][0]})
+
 # ============================================================================== 
 #                           
 # ==============================================================================
@@ -274,17 +301,18 @@ def DQN(c_init,Tmax,nb_episodes, n_moves):
 
         if episode%100 == 1:
 #             sess.run(loss_function,feed_dict={Q_: targetQ, x: S}),"\t",
-            print(n_moves,"\t",episode,"\t",min(sess.run(Q2,feed_dict={x:S})[0]),"\t", round(np.mean(cum_reward[-1]),2), "\t", np.sum(dones[-1000:]),"\t", round(100*np.sum(dones[-1000:])/min(1000,tries),2),"\t", round(100*np.sum(dones)/tries,2))
+            print(n_moves,"\t",episode,"\t",min(targetNet.sess.run(targetNet.Q2,feed_dict={x:S})[0]),"\t", round(np.mean(cum_reward[-1]),2), "\t", np.sum(dones[-1000:]),"\t", round(100*np.sum(dones[-1000:])/min(1000,tries),2),"\t", round(100*np.sum(dones)/tries,2))
             percentDone.append(100*np.sum(dones[-1000:])/min(1000,tries))
     #             print(lActions)
 #            print(np.var(sess.run(Q2,feed_dict={x:S})))
         
         if episode%1000 == 1:
+            targetNet.update_target_network(trainNet)
             plt.clf()
             plt.plot(percentDone, linewidth = 2)
             plt.title("n_moves: "+str(n_moves))
             plt.pause(0.0001)
-            topickle = [sess.run(W1),sess.run(W2)]
+            topickle = [targetNet.sess.run(targetNet.W1),targetNet.sess.run(targetNet.W2)]
             pickle.dump(topickle, open('save.p', 'wb'))
 
 
