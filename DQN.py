@@ -110,45 +110,45 @@ c_init=Cube(3)
 #                           DEFINE NEURAL NETWORK
 #==============================================================================
 
- resume = sys.argv[1] == "True"
+resume = sys.argv[1] == "True"
  
  # sess = tf.InteractiveSession()
- sess = tf.Session(config=tf.ConfigProto(log_device_placement=True)) 
- with tf.device("/gpu:0"):
+sess = tf.Session(config=tf.ConfigProto(log_device_placement=True)) 
+with tf.device("/gpu:0"):
  
-     x = tf.placeholder(tf.float32, shape=[None,6*c_init.N**2])
-     # act = tf.placeholder(tf.float32, shape=[nb_actions,None])
-     # Q_ = tf.placeholder(tf.float32, shape=[None,1])
-     Q_ = tf.placeholder(tf.float32, shape=[None,nb_actions])
- 
- 
-     if not resume:
-         W1 = tf.Variable(tf.random_normal([6*c_init.N**2,5000], stddev=1e-2))
-         # b1 = tf.Variable(tf.random_normal([6*c_init.N**2], stddev=1e-6))
- 
-         W2 = tf.Variable(tf.random_normal([5000,nb_actions], stddev=1e-2))
-         # b2 = tf.Variable(tf.random_normal([nb_actions], stddev=1e-6))  
-     else:
-         load = pickle.load(open('save.p', 'rb'))
-         W1 = tf.Variable(load[0])
-         W2 = tf.Variable(load[1])
+    x = tf.placeholder(tf.float32, shape=[None,6*c_init.N**2])
+    # act = tf.placeholder(tf.float32, shape=[nb_actions,None])
+    # Q_ = tf.placeholder(tf.float32, shape=[None,1])
+    Q_ = tf.placeholder(tf.float32, shape=[None,nb_actions])
  
  
-     Q1 = tf.matmul(x/6,W1)# + b1
-     Qs1 = tf.nn.tanh(Q1)
-     Q2 = tf.matmul(Qs1,W2)#tf.nn.relu(tf.matmul(Qs1,W2))# + b2)
-     # Qs = tf.matmul(Q2,act)
-     Qs = Q2
+    if not resume:
+        W1 = tf.Variable(tf.random_normal([6*c_init.N**2,5000], stddev=1e-2))
+        # b1 = tf.Variable(tf.random_normal([6*c_init.N**2], stddev=1e-6))
  
-     
-     loss_function = tf.reduce_mean(tf.square(tf.sub(Q_,Qs)))
+        W2 = tf.Variable(tf.random_normal([5000,nb_actions], stddev=1e-2))
+        # b2 = tf.Variable(tf.random_normal([nb_actions], stddev=1e-6))  
+    else:
+        load = pickle.load(open('save.p', 'rb'))
+        W1 = tf.Variable(load[0])
+        W2 = tf.Variable(load[1])
  
-     train_step = tf.train.AdamOptimizer(1e-4).minimize(loss_function)
-     
-     init_op = tf.group(tf.global_variables_initializer(), tf.local_variables_initializer())
-     sess.run(init_op)
  
- D = []
+    Q1 = tf.matmul(x/6,W1)# + b1
+    Qs1 = tf.nn.tanh(Q1)
+    Q2 = tf.matmul(Qs1,W2)#tf.nn.relu(tf.matmul(Qs1,W2))# + b2)
+    # Qs = tf.matmul(Q2,act)
+    Qs = Q2
+
+    
+    loss_function = tf.reduce_mean(tf.square(tf.sub(Q_,Qs)))
+
+    train_step = tf.train.AdamOptimizer(1e-4).minimize(loss_function)
+    
+    init_op = tf.group(tf.global_variables_initializer(), tf.local_variables_initializer())
+    sess.run(init_op)
+ 
+D = []
 #==============================================================================
 
 #==============================================================================
