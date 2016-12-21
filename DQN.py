@@ -181,7 +181,7 @@ with tf.device("/gpu:0"):
 #     Qs = targetNet.Q2
 
     
-    loss_function = tf.reduce_mean(tf.square(tf.sub(Q_,targetNet.Q2)))
+    loss_function = tf.reduce_mean(tf.square(tf.sub(Q_,trainNet.Q2)))
 
     train_step = tf.train.AdamOptimizer(1e-4).minimize(loss_function)
     
@@ -204,11 +204,9 @@ def DQN(c_init,Tmax,nb_episodes, n_moves):
     lActions = np.zeros(18)
     print("moves","\t","ep.","\t","Loss Function","\t","Min Q","\t\t", "Reward", "", "NB.","\t", "Prcent.","\t","Mn. Prcent.")
     
-    global targetNet
-        
-    mineps = .001
+    mineps = 0.1
     def eps(episode):
-        return min(1,max(.1,100/(1+episode)))
+        return min(1,max(mineps,100/episode))
     
     lenBatch = 1
     
@@ -220,7 +218,7 @@ def DQN(c_init,Tmax,nb_episodes, n_moves):
     
     dones = np.empty([0])
     
-    targetNet.tau = 1/Tmax
+    targetNet.tau = 1
     D = []
     
     while np.sum(dones[-1000:])/min(1000,tries) < .8 and episode < nb_episodes:  
@@ -239,7 +237,7 @@ def DQN(c_init,Tmax,nb_episodes, n_moves):
             
             #Choose an action by greedily (with e chance of random action) from the Q-network
             S = copy.copy(np.reshape(s.stickers,(1, 54)))
-            Qout = trainNet.sess.run(trainNet.Q2,feed_dict={x:S})
+            Qout = targetNet.sess.run(targetNet.Q2,feed_dict={x:S})
             if(rd.random() > eps(episode)):
                 a = np.argmax(Qout)
             else:
@@ -255,21 +253,21 @@ def DQN(c_init,Tmax,nb_episodes, n_moves):
             s.move(f,l,d)            
             r = reward_cube(s)
             cum_reward.append(r)
-            D.append(copy.deepcopy([S, a, r, np.reshape(s.stickers,(1, 54)), numCompleteFaces(s)]))
+#            D.append(copy.deepcopy([S, a, r, np.reshape(s.stickers,(1, 54)), numCompleteFaces(s)]))
             
             #print(S)
             #print(np.reshape(s.stickers,(1, 54)))
             
 #==============================================================================
              #Obtain the Q' values by feeding the new state through our network
-#            Qprime = trainNet.sess.run(trainNet.Q2,feed_dict={x:np.reshape(s.stickers,(1, 54))})
-             #Obtain maxQ' and set our target value for chosen action.
-#            maxQprime = np.max(Qprime)
-#            targetQ = Qout
-#            targetQ[0,a] = r + gamma*maxQprime
-             #Train our network using target and predicted Q values
+            Qprime = targetNet.sess.run(targetNet.Q2,feed_dict={x:np.reshape(s.stickers,(1, 54))})
+#             Obtain maxQ' and set our target value for chosen action.
+            maxQprime = np.max(Qprime)
+            targetQ = Qout
+            targetQ[0,a] = r + gamma*maxQprime
+#             Train our network using target and predicted Q values
                 
-#            trainNet.sess.run(train_step,feed_dict={Q_: targetQ, x: S})
+            trainNet.sess.run(train_step,feed_dict={Q_: targetQ, x: S})
 #==============================================================================
             
             #print(targetQ)
@@ -289,29 +287,29 @@ def DQN(c_init,Tmax,nb_episodes, n_moves):
 # ==============================================================================
 
 
-        if episode%lenBatch == 0:
-              D = D[-lenBatch*Tmax:]
-              batch = copy.deepcopy(np.array(D))
-              random.shuffle(batch)
-#              print(batch)
-              tts = np.empty([0,nb_actions])
-            
-              for i in range(len(batch)):
-              
-                  faces_done = batch[i][-1]
-                
-                  Qprime = trainNet.sess.run(trainNet.Q2,feed_dict={x:batch[i][-2]})
-                  maxQprime = np.max(Qprime)
-                
-                  tt = trainNet.sess.run(trainNet.Q2,feed_dict={x:batch[i][0]})
-                  if faces_done > 6:
-                      tt[0,batch[i][1]] = batch[i][-3]
-                  else:
-                      tt[0,batch[i][1]] = batch[i][-3] + gamma*maxQprime
-              
-                  tts = np.concatenate((tts,tt),0)
-              
-              trainNet.sess.run(train_step,feed_dict={Q_: tts, x: batch[:,0][0]})
+#        if episode%lenBatch == 0:
+#              D = D[-lenBatch*Tmax:]
+#              batch = copy.deepcopy(np.array(D))
+#              random.shuffle(batch)
+##              print(batch)
+#              tts = np.empty([0,nb_actions])
+#            
+#              for i in range(len(batch)):
+#              
+#                  faces_done = batch[i][-1]
+#                
+#                  Qprime = targetNet.sess.run(targetNet.Q2,feed_dict={x:batch[i][-2]})
+#                  maxQprime = np.max(Qprime)
+#                
+#                  tt = targetNet.sess.run(targetNet.Q2,feed_dict={x:batch[i][0]})
+#                  if faces_done > 6:
+#                      tt[0,batch[i][1]] = batch[i][-3]
+#                  else:
+#                      tt[0,batch[i][1]] = batch[i][-3] + gamma*maxQprime
+#              
+#                  tts = np.concatenate((tts,tt),0)
+#              
+#              trainNet.sess.run(train_step,feed_dict={Q_: tts, x: batch[:,0][0]})
 
 # ============================================================================== 
 #                           
