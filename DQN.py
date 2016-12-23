@@ -209,15 +209,10 @@ def DQN(c_init,Tmax,nb_episodes, n_moves):
         return min(1,max(mineps,100/episode))
     
     lenBatch = 1
-    
     episode = 1
-    
     percentDone = []
-    
     tries = 1
-    
     dones = np.empty([0])
-    
     targetNet.tau = 1
     D = []
     
@@ -334,7 +329,6 @@ def DQN(c_init,Tmax,nb_episodes, n_moves):
             plt.pause(0.0001)
             topickle = [targetNet.sess.run(targetNet.W1),targetNet.sess.run(targetNet.W2),targetNet.sess.run(targetNet.b1),targetNet.sess.run(targetNet.b2)]
             pickle.dump(topickle, open('save.p', 'wb'))
-
 
 
             
