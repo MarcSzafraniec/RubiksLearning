@@ -2,7 +2,6 @@
 # coding: utf-8
 
 # In[1]:
-
 import sys
 sys.path.insert(0, 'Resources/MagicCube/code/')
 import os
@@ -197,11 +196,12 @@ with tf.device("/gpu:0"):
 # In[37]:
 
 def DQN(c_init,Tmax,nb_episodes, n_moves):
-    
+    detail_mode = False #prints lots of things. Put = True for one move only
 
     plt.ion()
     done = 0
     lActions = np.zeros(18)
+    lActions_batch = np.zeros(lActions.shape[0] + 1) #shape different from lActions; see actualization.
     print("moves","\t","ep.","\t","Loss Function","\t","Min Q","\t\t", "Reward", "", "NB.","\t", "Prcent.","\t","Mn. Prcent.")
     
     mineps = 0.1
@@ -216,15 +216,16 @@ def DQN(c_init,Tmax,nb_episodes, n_moves):
     targetNet.tau = 1
     D = []
     cum_reward = []
-#    lActions_batch = []
-
+    
     while np.sum(dones[-1000:])/min(1000,tries) < .8 and episode < nb_episodes:  
         
         episode += 1
         
         s = copy.deepcopy(c_init)
-        s.randomize(n_moves) #we randomize n_moves times in order to have a "well mixed" cube
-        #s.move("R",2,-1)
+#        print(targetNet.sess.run(targetNet.Q2,feed_dict={x:np.reshape(s.stickers,(1, 54))}))
+        while numCompleteFaces(s) == 6: #in order not to start with the solved cube
+            s.randomize(n_moves) #we randomize n_moves times in order to have a "well mixed" cube
+#        s.move("R",2,-1)
         cum_reward_fill = 0
         
         tries += 1
@@ -237,13 +238,17 @@ def DQN(c_init,Tmax,nb_episodes, n_moves):
             Qout = targetNet.sess.run(targetNet.Q2,feed_dict={x:S})
             if(rd.random() > eps(episode)):
                 a = np.argmax(Qout)
+                if detail_mode:
+                    print("Maximizing (choice of action)")
             else:
                 a = rd.randint(0,nb_actions-1)
-            
+                if detail_mode:
+                    print("Random (choice of action)")
             lActions[a] += 1
-            
-            #print(actions[a])
+            if detail_mode:
+                print("action:",actions[a])
             #print(Qout)
+            
             #Get new state and reward from environment
             f,l,d = actions[a]
             #print(actions[a])
@@ -252,20 +257,41 @@ def DQN(c_init,Tmax,nb_episodes, n_moves):
             cum_reward_fill += r
 #            D.append(copy.deepcopy([S, a, r, np.reshape(s.stickers,(1, 54)), numCompleteFaces(s)]))
             
-            #print(S)
-            #print(np.reshape(s.stickers,(1, 54)))
             
 #==============================================================================
-             #Obtain the Q' values by feeding the new state through our network
-            Qprime = targetNet.sess.run(targetNet.Q2,feed_dict={x:np.reshape(s.stickers,(1, 54))})
-#             Obtain maxQ' and set our target value for chosen action.
-            maxQprime = np.max(Qprime)
-            targetQ = Qout
-            #print(targetQ)
-            targetQ[0,a] = r + gamma*maxQprime
-#             Train our network using target and predicted Q values
+            if numCompleteFaces(s) != 6:
+                #Obtain the Q' values by feeding the new state through our network
+                #print(S)
+                #print(np.reshape(s.stickers,(1, 54)))
+                Qprime = targetNet.sess.run(targetNet.Q2,feed_dict={x:np.reshape(s.stickers,(1, 54))})
                 
-            trainNet.sess.run(train_step,feed_dict={Q_: targetQ, x: S})
+                #Obtain maxQ' and set our target value for chosen action.
+                maxQprime = np.max(Qprime)
+                targetQ = Qout
+                #print(targetQ)
+                if detail_mode:
+                    print("not solved")
+                    print("before we have:",targetQ[0,a],"after we want:", r + gamma*maxQprime)
+                targetQ[0,a] = r + gamma*maxQprime
+            else:
+                targetQ = Qout
+                #print(targetQ)
+                if detail_mode:
+                    print("solved")
+                    print("before we have:",targetQ[0,a],"after we want:", r)
+                targetQ[0,a] = r
+            
+            #Train our network using target and predicted Q values
+            if detail_mode:
+                print("effect (with targetNet.tau =",targetNet.tau,"):")
+                print(targetNet.sess.run(targetNet.Q2,feed_dict={x: S}))
+#            trainNet.sess.run(train_step,feed_dict={Q_: targetQ, x: S}) #what was written before by Marc
+            targetNet.sess.run(train_step,feed_dict={Q_: targetQ, x: S}) #what Vincent modified (=> only one network)
+#            print(trainNet.sess.run(trainNet.Q2,feed_dict={x: S})) #to uncomment when the target and train networks will work
+            if detail_mode:
+                print(targetNet.sess.run(targetNet.Q2,feed_dict={x: S})) #try by Vincent (=> only one network)
+                print(actions)
+                print()
 #==============================================================================
             
             if numCompleteFaces(s) == 6:
@@ -309,7 +335,15 @@ def DQN(c_init,Tmax,nb_episodes, n_moves):
 # ==============================================================================
             
 #        if episode%(1) == 0:
-        targetNet.update_target_network()
+#        print("updating Q2 for the target network")    
+#        print("   before")
+#        print(targetNet.sess.run(targetNet.Q2,feed_dict={x: S}))
+#        targetNet.update_target_network() #cette ligne (qu'il y avait précedemment dans le code) n'actualise en fait pas targetNet
+##        targetNet.update_target_network_(trainNet) #je pense que c'est plutôt ça qu'il faut faire
+#        print("   after")
+#        print(targetNet.sess.run(targetNet.Q2,feed_dict={x: S}))
+        
+
             
         if episode%100 == 1:
 #            print(targetNet.sess.run(targetNet.W1))
@@ -327,12 +361,13 @@ def DQN(c_init,Tmax,nb_episodes, n_moves):
             plt.pause(0.0001)
             topickle = [targetNet.sess.run(targetNet.W1),targetNet.sess.run(targetNet.W2),targetNet.sess.run(targetNet.b1),targetNet.sess.run(targetNet.b2)]
             pickle.dump(topickle, open('save.p', 'wb'))
-#            if lActions_batch == []:
-#                lActions_batch = lActions    
-#                print(lActions)
-#            else:
-#                print(lActions - lActions_batch)
-#                lActions_batch = lActions
+            if lActions_batch.shape != lActions.shape:
+                lActions_batch = np.copy(lActions)
+                print(lActions)
+            else:
+#                print("check:",lActions,lActions_batch)
+                print(lActions - lActions_batch)
+                lActions_batch = np.copy(lActions)
 
             
 def longTrain(c_init,n_moves_init, n_moves_max):
@@ -346,8 +381,8 @@ def longTrain(c_init,n_moves_init, n_moves_max):
 # In[ ]:
 
 with tf.device("/gpu:0"):
-#    longTrain(Cube(3),1,10)
-    longTrain(Cube(3),1,1)
+    longTrain(Cube(3),1,10)
+#    longTrain(Cube(3),1,1) #mandatory for detail_mode = True (and we need also to have a fixed move, not a random one)
 #    DQN(c_init=Cube(3),Tmax=int(sys.argv[4]),nb_episodes=int(sys.argv[2]),n_moves = int(sys.argv[3]))
 
 
@@ -357,8 +392,6 @@ topickle = [targetNet.sess.run(targetNet.W1),targetNet.sess.run(targetNet.W2),ta
 pickle.dump(topickle, open('save.p', 'wb'))
 
 # In[ ]:
-
-
 
 
 # In[ ]:
