@@ -112,45 +112,50 @@ sess = tf.Session(config=tf.ConfigProto(log_device_placement=True))
 with tf.device("/gpu:0"):
 
     x = tf.placeholder(tf.float32, shape=[None,6*c_init.N**2])
-    # act = tf.placeholder(tf.float32, shape=[nb_actions,None])
-    # Q_ = tf.placeholder(tf.float32, shape=[None,1])
     Q_ = tf.placeholder(tf.float32, shape=[None,nb_actions])
-
+    n_layers = 1
 
     if not resume:
-        W1 = tf.Variable(tf.random_normal([6*c_init.N**2,5000], stddev=1e-2))
-        b1 = tf.Variable(tf.random_normal([5000], stddev=1e-2))
+        middle_layer = 500
+        W1 = tf.Variable(tf.random_normal([6*c_init.N**2,middle_layer], stddev=1e-2))
+        b1 = tf.Variable(tf.random_normal([middle_layer], stddev=1e-2))
 
-        W2 = tf.Variable(tf.random_normal([5000,nb_actions], stddev=1e-2))
-        Wm = tf.Variable(tf.random_normal([5000,5000], stddev=1e-2))
+        W2 = tf.Variable(tf.random_normal([middle_layer,nb_actions], stddev=1e-2))
         b2 = tf.Variable(tf.random_normal([nb_actions], stddev=1e-2)) 
-        bm = tf.Variable(tf.random_normal([5000], stddev=1e-2)) 
+
+        for i in range(n_layers):
+            globals()['Wm_%s'%i] = tf.Variable(tf.random_normal([middle_layer,middle_layer], stddev=1e-2))
+            globals()['bm_%s'%i]  = tf.Variable(tf.random_normal([middle_layer], stddev=1e-2)) 
         
     else:
         load = pickle.load(open('save.p', 'rb'))
         W1 = tf.Variable(load[0])
         W2 = tf.Variable(load[1])
-        Wm = tf.Variable(load[2])
-        b1 = tf.Variable(load[3])
-        b2 = tf.Variable(load[4])
-        bm = tf.Variable(load[5])
+        b1 = tf.Variable(load[2])
+        b2 = tf.Variable(load[3])
+        for i in range(n_layers):
+            globals()['Wm_%s'%i] = tf.Variable(load[4+i])
+            globals()['bm_%s'%i]  = tf.Variable(load[4+n_layers+i])
 
 
     Q1 = tf.nn.tanh(tf.matmul(x/6,W1) + b1)
-    Qm = tf.nn.tanh(tf.matmul(Q1,Wm) + bm)
-    Q2 = tf.matmul(Qm,W2) + b2#tf.nn.relu(tf.matmul(Qs1,W2))# + b2)
+    
+    Qm_0 = tf.nn.tanh(tf.matmul(Q1,Wm_0) + bm_0)
+    
+    for i in range(1,n_layers):
+        
+        globals()['Qm_%s'%i] = tf.nn.tanh(tf.matmul(globals()['Qm_%s'%(i-1)],globals()['Wm_%s'%i]) + globals()['bm_%s'%i])
+        
+        
+    Q2 = tf.matmul(globals()['Qm_%s'%(n_layers-1)],W2) + b2#tf.nn.relu(tf.matmul(Qs1,W2))# + b2)
     # Qs = tf.matmul(Q2,act)
     Qs = Q2
 
     
     loss_function = tf.reduce_mean(tf.square(tf.sub(Q_,Qs)))
 
-    train_step = tf.train.AdamOptimizer(1e-4).minimize(loss_function)
-    
     init_op = tf.group(tf.global_variables_initializer(), tf.local_variables_initializer())
     sess.run(init_op)
-
-D = []
 
 
 # In[37]:
@@ -161,9 +166,14 @@ def DQN(c_init,Tmax,nb_episodes, n_moves):
     lActions = np.zeros(18)
     print("moves","\t","ep.","\t","Loss Function","\t","Min Q","\t\t", "Reward", "", "NB.","\t", "Prcent.")
     
-    mineps = .01
+    with tf.device("/gpu:0"):
+        train_step = tf.train.RMSPropOptimizer(1e-5).minimize(loss_function)
+        sess.run(tf.group(tf.global_variables_initializer(), tf.local_variables_initializer()))
+        
+    mineps = .1
+    epssteps = 1e6
     def eps(episode):
-        return min(1,max(mineps,100/(1+episode)))
+        return 1-(1-mineps)*min(1,episode/(epssteps))
     
     percentDone = []
 
@@ -174,6 +184,8 @@ def DQN(c_init,Tmax,nb_episodes, n_moves):
     tries = 1
     
     dones = np.empty([0])
+    
+    D = []
     
     while np.sum(dones[-1000:])/min(1000,tries) < .8 and episode < nb_episodes:  
         
@@ -190,7 +202,7 @@ def DQN(c_init,Tmax,nb_episodes, n_moves):
         for i in range(Tmax):
             
             #Choose an action by greedily (with e chance of random action) from the Q-network
-            S = copy.copy(np.reshape(s.stickers,(1, 54)))
+            S = copy.deepcopy(np.reshape(s.stickers,(1, 54)))
             Qout = sess.run(Q2,feed_dict={x:S})
             if(rd.random() > eps(episode)):
                 a = np.argmax(Qout)
@@ -207,26 +219,58 @@ def DQN(c_init,Tmax,nb_episodes, n_moves):
             s.move(f,l,d)            
             r = reward_cube(s)
             cum_reward.append(r)
-#            D.append(copy.copy([S, a, r, np.reshape(s.stickers,(1, 54))]))
+            D.append(copy.deepcopy([S, a, r, np.reshape(s.stickers,(1, 54)) , numCompleteFaces(s)]))
             
             #print(S)
             #print(np.reshape(s.stickers,(1, 54)))
             
             #Obtain the Q' values by feeding the new state through our network
-            Qprime = sess.run(Q2,feed_dict={x:np.reshape(s.stickers,(1, 54))})
-            #Obtain maxQ' and set our target value for chosen action.
-            maxQprime = np.max(Qprime)
-            targetQ = Qout
-            targetQ[0,a] = r + gamma*maxQprime
-            #Train our network using target and predicted Q values
-               
-            sess.run(train_step,feed_dict={Q_: targetQ, x: S})
+#==============================================================================
+#            Qprime = sess.run(Q2,feed_dict={x:np.reshape(s.stickers,(1, 54))})
+             #Obtain maxQ' and set our target value for chosen action.
+#            maxQprime = np.max(Qprime)
+#            targetQ = Qout
+#            targetQ[0,a] = r + gamma*maxQprime
+             #Train our network using target and predicted Q values
+#                
+#             sess.run(train_step,feed_dict={Q_: targetQ, x: S})
+#==============================================================================
             
             #print(targetQ)
 
-            cum_reward.append(r)
             
-            
+# ============================================================================== 
+#                           EXPERIENCE REPLAY      
+# ==============================================================================
+    
+    
+            if len(D) == 16: # BATCH SIZE by Guillaume Lample
+                batch = copy.deepcopy(np.array(D))
+                random.shuffle(batch)
+                tts = np.empty([0,nb_actions])
+                
+                for i in range(len(batch)):
+                  
+                    faces_done = batch[i][-1]
+                    Qprime = sess.run(Q2,feed_dict={x:batch[i][-2]})
+                    maxQprime = np.max(Qprime)
+                    
+                    tt = sess.run(Q2,feed_dict={x:batch[i][0]})
+                    if faces_done >= 6:
+                        tt[0,batch[i][1]] = batch[i][-3]
+                    else:
+                        tt[0,batch[i][1]] = batch[i][-3] + gamma*maxQprime
+                  
+                    tts = np.concatenate((tts,tt),0)
+                  
+                sess.run(train_step,feed_dict={Q_: tts, x: batch[:,0][0]})
+                
+                D = []
+    
+# ============================================================================== 
+#                           
+# ==============================================================================
+
             if numCompleteFaces(s) == 6:
                 done = 1
                 break
@@ -234,31 +278,6 @@ def DQN(c_init,Tmax,nb_episodes, n_moves):
         dones = np.append(dones,done)
             
         
-#==============================================================================
-#         if episode%lenBatch == 0:
-#             Dshuf = D
-#             random.shuffle(Dshuf)
-#             batch = np.array(Dshuf[:lenBatch*Tmax])
-# 
-#             tts = np.empty([0,nb_actions])
-# 
-#             for i in range(len(batch)):
-# 
-#                 faces_done = np.sum([np.sum([batch[i][-1][0][f*9+j] != batch[i][-1][0][f*9] for j in range(9)]) == 0 for f in range(6)])
-#                 
-#                 Qprime = sess.run(Q2,feed_dict={x:batch[i][-1]})
-#                 maxQprime = np.max(Qprime)
-#                 
-#                 tt = sess.run(Q2,feed_dict={x:batch[i][0]})
-#                 if faces_done == 6:
-#                     tt[0,batch[i][1]] = batch[i][-2]
-#                 else:
-#                     tt[0,batch[i][1]] = batch[i][-2] + gamma*maxQprime
-# 
-#                 tts = np.concatenate((tts,tt),0)
-# 
-#             sess.run(train_step,feed_dict={Q_: tts, x: batch[:,0][0]})
-#==============================================================================
             
         if episode%100 == 1:
 #             sess.run(loss_function,feed_dict={Q_: targetQ, x: S}),"\t",
@@ -271,7 +290,9 @@ def DQN(c_init,Tmax,nb_episodes, n_moves):
             plt.plot(percentDone, linewidth = 2)
             plt.title("n_moves: "+str(n_moves))
             plt.pause(0.0001)
-            topickle = [sess.run(W1),sess.run(W2),sess.run(Wm),sess.run(b1),sess.run(b2),sess.run(bm)]
+            topickle = [sess.run(W1),sess.run(W2),sess.run(b1),sess.run(b2)]
+            topickle.append([sess.run(globals()['Wm_%s'%i]) for i in range(n_layers)])
+            topickle.append([sess.run(globals()['bm_%s'%i]) for i in range(n_layers)])
             pickle.dump(topickle, open('save.p', 'wb'))
 
 
@@ -294,8 +315,10 @@ with tf.device("/gpu:0"):
 
 
 # In[ ]:
-
-topickle = [sess.run(W1),sess.run(W2),sess.run(Wm),sess.run(b1),sess.run(b2),sess.run(bm)]
+    
+topickle = [sess.run(W1),sess.run(W2),sess.run(b1),sess.run(b2)]
+topickle.append([sess.run(globals()['Wm_%s'%i]) for i in range(n_layers)])
+topickle.append([sess.run(globals()['bm_%s'%i]) for i in range(n_layers)])
 pickle.dump(topickle, open('save.p', 'wb'))
 
 

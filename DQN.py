@@ -123,17 +123,11 @@ class network():
     
     def update_target_network_(self, trainNet):
         
-#        op1 = self.W1.assign(tf.mul(trainNet.sess.run(trainNet.W1),self.tau) + \
-#                      tf.mul(self.sess.run(self.W1),1.-self.tau))
-#        op2 = self.W2.assign(tf.mul(trainNet.sess.run(trainNet.W2),self.tau) + \
-#                      tf.mul(self.sess.run(self.W2),1.-self.tau))
-#        
-#        self.sess.run(tf.group(op1,op2))
-        
         self.update_target_network_params = \
             [self.network_params[i].assign(tf.mul(trainNet.network_params[i], self.tau) + \
-                tf.mul(self.network_params[i], 1. - self.tau))
+                tf.mul(self.network_params[i], 1. - self.tau)) \
                 for i in range(len(self.network_params))]
+
 
     def update_target_network(self):
         
@@ -153,8 +147,6 @@ resume = sys.argv[1] == "True"
 with tf.device("/gpu:0"):
  
     x = tf.placeholder(tf.float32, shape=[None,6*c_init.N**2])
-    # act = tf.placeholder(tf.float32, shape=[nb_actions,None])
-    # Q_ = tf.placeholder(tf.float32, shape=[None,1])
     Q_ = tf.placeholder(tf.float32, shape=[None,nb_actions])
     Qs = tf.placeholder(tf.float32, shape=[None,nb_actions])
  
@@ -215,7 +207,6 @@ def DQN(c_init,Tmax,nb_episodes, n_moves):
     dones = np.empty([0])
     targetNet.tau = 1
     D = []
-    cum_reward = []
     
     while np.sum(dones[-1000:])/min(1000,tries) < .8 and episode < nb_episodes:  
         
@@ -226,6 +217,7 @@ def DQN(c_init,Tmax,nb_episodes, n_moves):
         while numCompleteFaces(s) == 6: #in order not to start with the solved cube
             s.randomize(n_moves) #we randomize n_moves times in order to have a "well mixed" cube
 #        s.move("R",2,-1)
+        cum_reward = []
         cum_reward_fill = 0
         
         tries += 1
@@ -255,45 +247,78 @@ def DQN(c_init,Tmax,nb_episodes, n_moves):
             s.move(f,l,d)            
             r = reward_cube(s)
             cum_reward_fill += r
-#            D.append(copy.deepcopy([S, a, r, np.reshape(s.stickers,(1, 54)), numCompleteFaces(s)]))
+            D.append(copy.deepcopy([S, a, r, np.reshape(s.stickers,(1, 54)), numCompleteFaces(s)]))
             
-            
+
 #==============================================================================
-            if numCompleteFaces(s) != 6:
-                #Obtain the Q' values by feeding the new state through our network
-                #print(S)
-                #print(np.reshape(s.stickers,(1, 54)))
-                Qprime = targetNet.sess.run(targetNet.Q2,feed_dict={x:np.reshape(s.stickers,(1, 54))})
+#            if numCompleteFaces(s) != 6:
+#                #Obtain the Q' values by feeding the new state through our network
+#                #print(S)
+#                #print(np.reshape(s.stickers,(1, 54)))
+#                Qprime = targetNet.sess.run(targetNet.Q2,feed_dict={x:np.reshape(s.stickers,(1, 54))})
+#                
+#                #Obtain maxQ' and set our target value for chosen action.
+#                maxQprime = np.max(Qprime)
+#                targetQ = Qout
+#                #print(targetQ)
+#                if detail_mode:
+#                    print("not solved")
+#                    print("before we have:",targetQ[0,a],"after we want:", r + gamma*maxQprime)
+#                targetQ[0,a] = r + gamma*maxQprime
+#            else:
+#                targetQ = Qout
+#                #print(targetQ)
+#                if detail_mode:
+#                    print("solved")
+#                    print("before we have:",targetQ[0,a],"after we want:", r)
+#                targetQ[0,a] = r
+#            
+#            #Train our network using target and predicted Q values
+#            if detail_mode:
+#                print("effect (with targetNet.tau =",targetNet.tau,"):")
+#                print(targetNet.sess.run(targetNet.Q2,feed_dict={x: S}))
+##            trainNet.sess.run(train_step,feed_dict={Q_: targetQ, x: S}) #what was written before by Marc
+#            targetNet.sess.run(train_step,feed_dict={Q_: targetQ, x: S}) #what Vincent modified (=> only one network)
+##            print(trainNet.sess.run(trainNet.Q2,feed_dict={x: S})) #to uncomment when the target and train networks will work
+#            if detail_mode:
+#                print(targetNet.sess.run(targetNet.Q2,feed_dict={x: S})) #try by Vincent (=> only one network)
+#                print(actions)
+#                print()
+#==============================================================================
+            
+# ============================================================================== 
+#                           EXPERIENCE REPLAY      
+# ==============================================================================
+    
+    
+            if len(D) == 16: # BATCH SIZE by Guillaume Lample
+                batch = copy.deepcopy(np.array(D))
+                random.shuffle(batch)
+                tts = np.empty([0,nb_actions])
                 
-                #Obtain maxQ' and set our target value for chosen action.
-                maxQprime = np.max(Qprime)
-                targetQ = Qout
-                #print(targetQ)
-                if detail_mode:
-                    print("not solved")
-                    print("before we have:",targetQ[0,a],"after we want:", r + gamma*maxQprime)
-                targetQ[0,a] = r + gamma*maxQprime
-            else:
-                targetQ = Qout
-                #print(targetQ)
-                if detail_mode:
-                    print("solved")
-                    print("before we have:",targetQ[0,a],"after we want:", r)
-                targetQ[0,a] = r
-            
-            #Train our network using target and predicted Q values
-            if detail_mode:
-                print("effect (with targetNet.tau =",targetNet.tau,"):")
-                print(targetNet.sess.run(targetNet.Q2,feed_dict={x: S}))
-#            trainNet.sess.run(train_step,feed_dict={Q_: targetQ, x: S}) #what was written before by Marc
-            targetNet.sess.run(train_step,feed_dict={Q_: targetQ, x: S}) #what Vincent modified (=> only one network)
-#            print(trainNet.sess.run(trainNet.Q2,feed_dict={x: S})) #to uncomment when the target and train networks will work
-            if detail_mode:
-                print(targetNet.sess.run(targetNet.Q2,feed_dict={x: S})) #try by Vincent (=> only one network)
-                print(actions)
-                print()
-#==============================================================================
-            
+                for i in range(len(batch)):
+                  
+                    faces_done = batch[i][-1]
+                    Qprime = targetNet.sess.run(targetNet.Q2,feed_dict={x:batch[i][-2]})
+                    maxQprime = np.max(Qprime)
+                    
+                    tt = targetNet.sess.run(targetNet.Q2,feed_dict={x:batch[i][0]})
+                    if faces_done > 6:
+                        tt[0,batch[i][1]] = batch[i][-3]
+                    else:
+                        tt[0,batch[i][1]] = batch[i][-3] + gamma*maxQprime
+                  
+                    tts = np.concatenate((tts,tt),0)
+                  
+                targetNet.sess.run(train_step,feed_dict={Q_: tts, x: batch[:,0][0]})
+                
+                D = []
+    
+# ============================================================================== 
+#                           
+# ==============================================================================
+
+
             if numCompleteFaces(s) == 6:
                 done = 1
                 break
@@ -301,45 +326,13 @@ def DQN(c_init,Tmax,nb_episodes, n_moves):
         dones = np.append(dones,done)
         cum_reward.append(cum_reward_fill)
         
-# ============================================================================== 
-#                           EXPERIENCE REPLAY      
-# ==============================================================================
 
-
-#        if episode%lenBatch == 0:
-#              D = D[-lenBatch*Tmax:]
-#              batch = copy.deepcopy(np.array(D))
-#              random.shuffle(batch)
-##              print(batch)
-#              tts = np.empty([0,nb_actions])
-#            
-#              for i in range(len(batch)):
-#              
-#                  faces_done = batch[i][-1]
-#                
-#                  Qprime = targetNet.sess.run(targetNet.Q2,feed_dict={x:batch[i][-2]})
-#                  maxQprime = np.max(Qprime)
-#                
-#                  tt = targetNet.sess.run(targetNet.Q2,feed_dict={x:batch[i][0]})
-#                  if faces_done > 6:
-#                      tt[0,batch[i][1]] = batch[i][-3]
-#                  else:
-#                      tt[0,batch[i][1]] = batch[i][-3] + gamma*maxQprime
-#              
-#                  tts = np.concatenate((tts,tt),0)
-#              
-#              trainNet.sess.run(train_step,feed_dict={Q_: tts, x: batch[:,0][0]})
-
-# ============================================================================== 
-#                           
-# ==============================================================================
             
-#        if episode%(1) == 0:
 #        print("updating Q2 for the target network")    
 #        print("   before")
 #        print(targetNet.sess.run(targetNet.Q2,feed_dict={x: S}))
-#        targetNet.update_target_network() #cette ligne (qu'il y avait précedemment dans le code) n'actualise en fait pas targetNet
-##        targetNet.update_target_network_(trainNet) #je pense que c'est plutôt ça qu'il faut faire
+        targetNet.update_target_network() #cette ligne (qu'il y avait précedemment dans le code) n'actualise en fait pas targetNet
+#        targetNet.update_target_network_(trainNet) #je pense que c'est plutôt ça qu'il faut faire
 #        print("   after")
 #        print(targetNet.sess.run(targetNet.Q2,feed_dict={x: S}))
         
@@ -361,13 +354,13 @@ def DQN(c_init,Tmax,nb_episodes, n_moves):
             plt.pause(0.0001)
             topickle = [targetNet.sess.run(targetNet.W1),targetNet.sess.run(targetNet.W2),targetNet.sess.run(targetNet.b1),targetNet.sess.run(targetNet.b2)]
             pickle.dump(topickle, open('save.p', 'wb'))
-            if lActions_batch.shape != lActions.shape:
-                lActions_batch = np.copy(lActions)
-                print(lActions)
-            else:
-#                print("check:",lActions,lActions_batch)
-                print(lActions - lActions_batch)
-                lActions_batch = np.copy(lActions)
+#            if lActions_batch.shape != lActions.shape:
+#                lActions_batch = np.copy(lActions)
+#                print(lActions)
+#            else:
+##                print("check:",lActions,lActions_batch)
+#                print(lActions - lActions_batch)
+#                lActions_batch = np.copy(lActions)
 
             
 def longTrain(c_init,n_moves_init, n_moves_max):
