@@ -167,18 +167,16 @@ def DQN(c_init,Tmax,nb_episodes, n_moves):
     print("moves","\t","ep.","\t","Loss Function","\t","Min Q","\t\t", "Reward", "", "NB.","\t", "Prcent.")
     
     with tf.device("/gpu:0"):
-        train_step = tf.train.RMSPropOptimizer(1e-5).minimize(loss_function)
+        train_step = tf.train.RMSPropOptimizer(0.002).minimize(loss_function)
         sess.run(tf.group(tf.global_variables_initializer(), tf.local_variables_initializer()))
         
-    mineps = .1
-    epssteps = 1e6
+    mineps = 5./1000
+    epssteps = 1e5
     def eps(episode):
         return 1-(1-mineps)*min(1,episode/(epssteps))
     
     percentDone = []
 
-    lenBatch = 10
-    
     episode = 1
     
     tries = 1
@@ -187,7 +185,7 @@ def DQN(c_init,Tmax,nb_episodes, n_moves):
     
     D = []
     
-    while np.sum(dones[-1000:])/min(1000,tries) < .8 and episode < nb_episodes:  
+    while np.sum(dones[-1000:])/min(1000,tries) < .9*((1-mineps)**n_moves) and episode < nb_episodes:  
         
         episode += 1
         
@@ -263,7 +261,7 @@ def DQN(c_init,Tmax,nb_episodes, n_moves):
                   
                     tts = np.concatenate((tts,tt),0)
                   
-                sess.run(train_step,feed_dict={Q_: tts, x: batch[:,0][0]})
+                sess.run(train_step,feed_dict={Q_: tts, x: np.vstack(batch[:,0])})
                 
                 D = []
     
