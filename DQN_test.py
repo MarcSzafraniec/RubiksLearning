@@ -113,7 +113,7 @@ with tf.device("/gpu:0"):
 
     x = tf.placeholder(tf.float32, shape=[None,6*c_init.N**2])
     Q_ = tf.placeholder(tf.float32, shape=[None,nb_actions])
-    n_layers = 1
+    n_layers = 5
 
     if not resume:
         middle_layer = 500
@@ -134,8 +134,8 @@ with tf.device("/gpu:0"):
         b1 = tf.Variable(load[2])
         b2 = tf.Variable(load[3])
         for i in range(n_layers):
-            globals()['Wm_%s'%i] = tf.Variable(load[4+i])
-            globals()['bm_%s'%i]  = tf.Variable(load[4+n_layers+i])
+            globals()['Wm_%s'%i] = tf.Variable(load[4][i])
+            globals()['bm_%s'%i]  = tf.Variable(load[5][i])
 
 
     Q1 = tf.nn.tanh(tf.matmul(x/6,W1) + b1)
@@ -288,6 +288,8 @@ def DQN(c_init,Tmax,nb_episodes, n_moves):
             plt.plot(percentDone, linewidth = 2)
             plt.title("n_moves: "+str(n_moves))
             plt.pause(0.0001)
+            
+        if episode%10000 == 1:
             topickle = [sess.run(W1),sess.run(W2),sess.run(b1),sess.run(b2)]
             topickle.append([sess.run(globals()['Wm_%s'%i]) for i in range(n_layers)])
             topickle.append([sess.run(globals()['bm_%s'%i]) for i in range(n_layers)])
