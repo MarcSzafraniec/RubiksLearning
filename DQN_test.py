@@ -113,7 +113,7 @@ with tf.device("/gpu:0"):
 
     x = tf.placeholder(tf.float32, shape=[None,6*c_init.N**2])
     Q_ = tf.placeholder(tf.float32, shape=[None,nb_actions])
-    n_layers = 5
+    n_layers = 1
 
     if not resume:
         middle_layer = 500
@@ -133,6 +133,7 @@ with tf.device("/gpu:0"):
         W2 = tf.Variable(load[1])
         b1 = tf.Variable(load[2])
         b2 = tf.Variable(load[3])
+        n_layers = len(load[4])
         for i in range(n_layers):
             globals()['Wm_%s'%i] = tf.Variable(load[4][i])
             globals()['bm_%s'%i]  = tf.Variable(load[5][i])
@@ -170,12 +171,13 @@ def DQN(c_init,Tmax,nb_episodes, n_moves):
         train_step = tf.train.RMSPropOptimizer(0.002).minimize(loss_function)
         sess.run(tf.group(tf.global_variables_initializer(), tf.local_variables_initializer()))
         
-    mineps = 5./1000
-    epssteps = 1e5
+    mineps = 10./100
+    epssteps = 1e6
     def eps(episode):
         return 1-(1-mineps)*min(1,episode/(epssteps))
     
-    percentDone = []
+    percentDone = np.array([0])
+    percentDoneMean = np.array([0])
 
     episode = 1
     
@@ -185,7 +187,7 @@ def DQN(c_init,Tmax,nb_episodes, n_moves):
     
     D = []
     
-    while np.sum(dones[-1000:])/min(1000,tries) < .9*((1-mineps)**n_moves) and episode < nb_episodes:  
+    while percentDoneMean[-1] < .95 and episode < nb_episodes:  
         
         episode += 1
         
@@ -277,16 +279,45 @@ def DQN(c_init,Tmax,nb_episodes, n_moves):
             
         
             
-        if episode%100 == 1:
-#             sess.run(loss_function,feed_dict={Q_: targetQ, x: S}),"\t",
-            print(n_moves,"\t",episode,"\t",min(sess.run(Q2,feed_dict={x:S})[0]),"\t", round(np.mean(cum_reward[-1]),2), "\t", np.sum(dones[-1000:]),"\t", round(100*np.sum(dones[-1000:])/min(1000,tries),2))
-    #             print(lActions)
-            percentDone.append(100*np.sum(dones[-1000:])/min(1000,tries))
+#        if episode%100 == 1:
+##             sess.run(loss_function,feed_dict={Q_: targetQ, x: S}),"\t",
+#            print(n_moves,"\t",episode,"\t",min(sess.run(Q2,feed_dict={x:S})[0]),"\t", round(np.mean(cum_reward[-1]),2), "\t", np.sum(dones[-1000:]),"\t", round(100*np.sum(dones[-1000:])/min(1000,tries),2))
+#    #             print(lActions)
+#            percentDone.append(100*np.sum(dones[-1000:])/min(1000,tries))
             
         if episode%1000 == 1:
+            #Evaluation of the policy
+#            print("Evaluation after training: actions maximizing the reward, no more random")
+            dones_evaluation = np.empty([0])
+            N_iteration_evaluation = 100
+            for _ in range(N_iteration_evaluation):
+                done_evaluation = 0
+                s = copy.deepcopy(c_init)
+                while numCompleteFaces(s) == 6: #in order not to start with the solved cube
+                    s.randomize(n_moves) #we randomize n_moves times in order to have a "well mixed" cube
+                for i in range(Tmax):
+                    S = copy.deepcopy(np.reshape(s.stickers,(1, 54)))
+                    #Choose an action by greedily (with e chance of random action) from the Q-network
+                    Qout = sess.run(Q2,feed_dict={x:S})
+                    a = np.argmax(Qout)
+                    #Get new state and reward from environment
+                    f,l,d = actions[a]
+                    s.move(f,l,d)   
+                    if numCompleteFaces(s) == 6:
+                        done_evaluation = 1
+                        break
+                dones_evaluation = np.append(dones_evaluation,done_evaluation)        
+            print(n_moves,"\t", episode, "\t", np.round(percentDoneMean[-1],2), "\t", round(np.mean(cum_reward[-1]),2),"\t", np.sum(dones_evaluation), "\t", round(100*np.mean(dones_evaluation),2))
+
+            percentDone = np.append(percentDone,np.mean(dones_evaluation))
+            percentDoneMean = np.append(percentDoneMean, np.mean(percentDone[-10:]))
+            
             plt.clf()
-            plt.plot(percentDone, linewidth = 2)
-            plt.title("n_moves: "+str(n_moves))
+            plt.plot(100*percentDone, linewidth = 2, alpha = 0.5)
+            plt.plot(100*percentDoneMean, linewidth = 2)
+            plt.title("n_moves: "+str(n_moves)+" - "+str(int(100*percentDoneMean[-1]))+"%")
+            plt.xlabel("Nb_episodes (*1000)")
+            plt.ylabel("Accuracy (%)")
             plt.pause(0.0001)
             
         if episode%10000 == 1:
@@ -294,14 +325,15 @@ def DQN(c_init,Tmax,nb_episodes, n_moves):
             topickle.append([sess.run(globals()['Wm_%s'%i]) for i in range(n_layers)])
             topickle.append([sess.run(globals()['bm_%s'%i]) for i in range(n_layers)])
             pickle.dump(topickle, open('save.p', 'wb'))
-
+            
+    plt.savefig("./learning_curves/n_moves_"+str(n_moves)+".png")
 
 
 
             
-def longTrain(c_init,n_moves_max):
+def longTrain(c_init,n_moves_min,n_moves_max):
 
-    for i in range(1,1+n_moves_max):
+    for i in range(n_moves_min,1+n_moves_max):
         print("==============================================================================")
         print("\t",i,"Moves","\t")
         print("==============================================================================")
@@ -310,7 +342,7 @@ def longTrain(c_init,n_moves_max):
 # In[ ]:
 
 with tf.device("/gpu:0"):
-    longTrain(Cube(3),10)
+    longTrain(Cube(3),1,20)
 #    DQN(c_init=Cube(3),Tmax=int(sys.argv[4]),nb_episodes=int(sys.argv[2]),n_moves = int(sys.argv[3]))
 
 
