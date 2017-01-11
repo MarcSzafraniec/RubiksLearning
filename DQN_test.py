@@ -113,10 +113,10 @@ with tf.device("/gpu:0"):
 
     x = tf.placeholder(tf.float32, shape=[None,6*c_init.N**2])
     Q_ = tf.placeholder(tf.float32, shape=[None,nb_actions])
-    n_layers = 1
+    n_layers = 2
 
     if not resume:
-        middle_layer = 500
+        middle_layer = 200
         W1 = tf.Variable(tf.random_normal([6*c_init.N**2,middle_layer], stddev=1e-2))
         b1 = tf.Variable(tf.random_normal([middle_layer], stddev=1e-2))
 
@@ -194,7 +194,7 @@ def DQN(c_init,Tmax,nb_episodes, n_moves):
         s = copy.deepcopy(c_init)
         s.randomize(n_moves) #we randomize n_moves times in order to have a "well mixed" cube
         #s.move("R",2,-1)
-        cum_reward = []
+#        cum_reward = []
         
         tries += 1
         done = 0
@@ -218,7 +218,7 @@ def DQN(c_init,Tmax,nb_episodes, n_moves):
             #print(actions[a])
             s.move(f,l,d)            
             r = reward_cube(s)
-            cum_reward.append(r)
+#            cum_reward.append(r)
             D.append(copy.deepcopy([S, a, r, np.reshape(s.stickers,(1, 54)) , numCompleteFaces(s)]))
             
             #print(S)
@@ -307,7 +307,7 @@ def DQN(c_init,Tmax,nb_episodes, n_moves):
                         done_evaluation = 1
                         break
                 dones_evaluation = np.append(dones_evaluation,done_evaluation)        
-            print(n_moves,"\t", episode, "\t", np.round(percentDoneMean[-1],2), "\t", round(np.mean(cum_reward[-1]),2),"\t", np.sum(dones_evaluation), "\t", round(100*np.mean(dones_evaluation),2))
+            print(n_moves,"\t", episode, "\t", np.round(percentDoneMean[-1],2), "\t", round(100*np.mean(dones_evaluation),2), "\t", round(100*percentDoneMean[-1],2))
 
             percentDone = np.append(percentDone,np.mean(dones_evaluation))
             percentDoneMean = np.append(percentDoneMean, np.mean(percentDone[-10:]))
@@ -315,7 +315,7 @@ def DQN(c_init,Tmax,nb_episodes, n_moves):
             plt.clf()
             plt.plot(100*percentDone, linewidth = 2, alpha = 0.5)
             plt.plot(100*percentDoneMean, linewidth = 2)
-            plt.title("n_moves: "+str(n_moves)+" - "+str(int(100*percentDoneMean[-1]))+"%")
+            plt.title("n_moves: "+str(n_moves)+" - "+str(100*np.round(percentDoneMean[-1],3))+"%")
             plt.xlabel("Nb_episodes (*1000)")
             plt.ylabel("Accuracy (%)")
             plt.pause(0.0001)
